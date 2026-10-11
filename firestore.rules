@@ -1,0 +1,24 @@
+// 既存のルールを丸ごと置き換える前に、他のコレクションの権限を確認してください。
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAdmin() {
+      return request.auth != null &&
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+    match /admins/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow write: if false;
+    }
+    match /posts/{postId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+    match /siteStats/visits {
+      allow read: if true;
+      allow create: if request.resource.data.keys().hasOnly(['count']) && request.resource.data.count == 1;
+      allow update: if request.resource.data.keys().hasOnly(['count']) && request.resource.data.count == resource.data.count + 1;
+      allow delete: if false;
+    }
+  }
+}
