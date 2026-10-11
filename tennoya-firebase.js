@@ -6,7 +6,7 @@ if(!firebaseConfig.apiKey || !firebaseConfig.projectId){
   if(posts)posts.textContent='お知らせは準備中です。';
 }else{
   try{
-    const [{initializeApp},{getFirestore,doc,getDoc,setDoc,runTransaction,collection,query,orderBy,getDocs},{getAuth,signInWithEmailAndPassword,signOut,onAuthStateChanged}] = await Promise.all([
+    const [{initializeApp},{getFirestore,doc,getDoc,setDoc,runTransaction,collection,query,where,orderBy,getDocs},{getAuth,signInWithEmailAndPassword,signOut,onAuthStateChanged}] = await Promise.all([
       import('https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js'),
       import('https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js'),
       import('https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js')
@@ -25,10 +25,10 @@ if(!firebaseConfig.apiKey || !firebaseConfig.projectId){
     }
     if(posts){
       try{
-        const snapshot=await getDocs(query(collection(db,'posts'),orderBy('createdAt','desc')));
+        const snapshot=await getDocs(query(collection(db,'posts'),where('status','==','approved')));
         posts.replaceChildren();
         if(snapshot.empty)posts.textContent='新しいお知らせをお楽しみに。';
-        snapshot.forEach(s=>{const d=s.data();const article=document.createElement('article');const h=document.createElement('h3');h.textContent=d.title||'';article.append(h);const t=document.createElement('time');t.textContent=d.createdAt?.toDate?.().toLocaleDateString('ja-JP')||'';article.append(t);if(d.image){const img=document.createElement('img');img.src=d.image;img.alt=d.title||'記事の写真';img.loading='lazy';article.append(img)}const body=document.createElement('p');body.textContent=d.body||'';article.append(body);posts.append(article)});
+        snapshot.forEach(s=>{const d=s.data();const article=document.createElement('article');const h=document.createElement('h3');h.textContent=d.title||d.name||'お知らせ';article.append(h);const t=document.createElement('time');t.textContent=d.createdAt?.toDate?.().toLocaleDateString('ja-JP')||'';article.append(t);if(d.image){const img=document.createElement('img');img.src=d.image;img.alt=d.title||'記事の写真';img.loading='lazy';article.append(img)}const body=document.createElement('p');body.textContent=d.body||d.message||'';article.append(body);posts.append(article)});
       }catch(e){posts.textContent='記事を読み込めませんでした。';console.warn(e)}
     }
   }catch(e){if(count)count.textContent='接続待ち';if(posts)posts.textContent='接続設定を確認してください。';console.error(e)}
