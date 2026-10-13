@@ -193,9 +193,37 @@ if(output&&firebaseConfig.apiKey&&firebaseConfig.projectId){
     }
   }
 
+  // ページを離れたら再生を停止し、端末側のメディア表示も終了を通知する。
+  function stopBgm() {
+    bgm.pause();
+    try { bgm.currentTime = 0; } catch (_) {}
+    if (audioContext && audioContext.state === 'running') {
+      audioContext.suspend().catch(() => {});
+    }
+    if ('mediaSession' in navigator) {
+      try { navigator.mediaSession.playbackState = 'none'; } catch (_) {}
+      try { navigator.mediaSession.metadata = null; } catch (_) {}
+    }
+  }
+
+  // 音声ソースを解除してバックグラウンド再生・プレーヤー残留を抑える。
+  function leavePage() {
+    stopBgm();
+    bgm.removeAttribute('src');
+    bgm.load();
+  }
+  function restoreSource() {
+    if (!bgm.getAttribute('src')) {
+      bgm.setAttribute('src', 'bgm.mp3');
+      bgm.load();
+    }
+  }
+
   // play() はユーザーの操作イベントの中から直接実行する。
   // 非同期処理を挟むとスマホの再生許可が失われる場合がある。
   function startBgm() {
+    if (document.hidden) return;
+    restoreSource();
     if (audioContext && audioContext.state === 'suspended') {
       audioContext.resume().catch(() => {});
     }
@@ -211,9 +239,11 @@ if(output&&firebaseConfig.apiKey&&firebaseConfig.projectId){
   // ブラウザが自動再生を許可している環境ではページ表示直後から鳴らす。
   startBgm();
   window.addEventListener('pageshow', startBgm);
+  window.addEventListener('pagehide', leavePage);
   bgm.addEventListener('canplay', startBgm);
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) startBgm();
+    if (document.hidden) leavePage();
+    else startBgm();
   });
 
   // 音付き自動再生が禁止されたスマホでも、最初のタップで再生する。
