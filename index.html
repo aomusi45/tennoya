@@ -58,8 +58,12 @@
 /* トップページには最新2記事のみ表示 */
 #blog-posts > article:nth-of-type(n+3){display:none!important}
 #blog-posts .tn-post-photos{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:14px 0}
-#blog-posts .tn-post-photos img{width:100%;height:auto;aspect-ratio:1;object-fit:cover;border-radius:8px;cursor:pointer}
+#blog-posts .tn-post-photos img{width:100%;height:auto;aspect-ratio:1;object-fit:contain;border-radius:8px;cursor:pointer}
 @media(max-width:500px){#blog-posts .tn-post-photos{gap:5px}}
+.tn-photo-overlay{position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center;padding:55px 12px 20px}
+.tn-photo-overlay img{max-width:min(85vw,720px);max-height:75vh;width:auto;height:auto;object-fit:contain;border-radius:8px;box-shadow:0 8px 30px #0008}
+.tn-photo-close{position:absolute;top:10px;right:12px;background:#fff;color:#222;border:0;border-radius:6px;padding:10px 16px;font-size:16px;cursor:pointer}
+#blog-posts .tn-post-photos img{cursor:zoom-in}
 </style>
 <script type="module">
 // 掲示板の写真は posts.images（配列）に保存されている。
@@ -89,7 +93,19 @@ if(host){
         photos.slice(0,3).forEach(url=>{
           if(typeof url!=='string'||!(url.startsWith('https://')||url.startsWith('data:image/')))return;
           const img=document.createElement('img');img.src=url;img.alt='ブログに投稿された写真';img.loading='lazy';
-          img.addEventListener('click',()=>window.open(url,'_blank','noopener'));
+          img.tabIndex=0;img.setAttribute('role','button');img.setAttribute('aria-label','写真を拡大表示');
+          const enlarge=()=>{
+            const overlay=document.createElement('div');overlay.className='tn-photo-overlay';overlay.setAttribute('role','dialog');overlay.setAttribute('aria-modal','true');overlay.setAttribute('aria-label','写真の拡大表示');
+            const big=document.createElement('img');big.src=url;big.alt='拡大したブログ写真';
+            const close=document.createElement('button');close.type='button';close.className='tn-photo-close';close.textContent='× 閉じる';
+            const dismiss=()=>{overlay.remove();document.removeEventListener('keydown',onEscape);};
+            const onEscape=e=>{if(e.key==='Escape')dismiss();};
+            close.addEventListener('click',dismiss);
+            overlay.addEventListener('click',e=>{if(e.target===overlay)dismiss();});
+            overlay.append(big,close);document.body.append(overlay);close.focus();document.addEventListener('keydown',onEscape);
+          };
+          img.addEventListener('click',enlarge);
+          img.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();enlarge();}});
           grid.append(img);
         });
         if(grid.childElementCount){
