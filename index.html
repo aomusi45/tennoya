@@ -179,22 +179,29 @@ if(output&&firebaseConfig.apiKey&&firebaseConfig.projectId){
   });
 }
 </script>
-<!-- BGM：ページ読み込み時に自動再生を試行。再生ボタンなし -->
-<audio id="tennoya-bgm" src="bgm.mp3" autoplay loop preload="auto" playsinline></audio>
+<!-- 天乃八 BGM：自動再生を試行し、操作時も再生（音量20%、ループ） -->
+<audio id="tennoya-bgm" src="bgm.mp3" preload="auto" autoplay loop playsinline></audio>
 <script>
-(()=>{
-  const bgm=document.getElementById('tennoya-bgm');
-  if(!bgm)return;
-  bgm.volume=0.2;
-  const tryAutoplay=()=>{
-    if(!bgm.paused)return;
-    const result=bgm.play();
-    if(result && typeof result.catch==='function') result.catch(()=>{});
+(() => {
+  const bgm = document.getElementById('tennoya-bgm');
+  if (!bgm) return;
+  bgm.volume = 0.2;
+  bgm.loop = true;
+  const playBgm = () => {
+    if (!bgm.paused) return;
+    try {
+      const result = bgm.play();
+      if (result && typeof result.catch === 'function') {
+        result.catch(err => console.info('BGM playback blocked:', err.name));
+      }
+    } catch (err) { console.info('BGM playback unavailable:', err); }
   };
-  tryAutoplay();
-  document.addEventListener('DOMContentLoaded',tryAutoplay,{once:true});
-  bgm.addEventListener('canplay',tryAutoplay,{once:true});
-  window.addEventListener('pageshow',tryAutoplay);
+  playBgm();
+  bgm.addEventListener('canplay', playBgm, {once:true});
+  window.addEventListener('pageshow', playBgm);
+  for (const event of ['pointerdown', 'touchstart', 'click', 'keydown']) {
+    document.addEventListener(event, playBgm, {capture:true, passive:true});
+  }
 })();
 </script>
 </body></html>
