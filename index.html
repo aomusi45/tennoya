@@ -179,25 +179,22 @@ if(output&&firebaseConfig.apiKey&&firebaseConfig.projectId){
   });
 }
 </script>
-<!-- 天乃八 BGM：自動再生を試行し、制限時は最初の操作で再生（音量20%、ループ） -->
-<audio id="tennoya-bgm" src="bgm.mp3" preload="auto" autoplay loop playsinline></audio>
+<!-- BGM：ページ読み込み時に自動再生を試行。再生ボタンなし -->
+<audio id="tennoya-bgm" src="bgm.mp3" autoplay loop preload="auto" playsinline></audio>
 <script>
 (()=>{
-  const audio=document.getElementById('tennoya-bgm');
-  if(!audio)return;
-  audio.volume=0.2;
-  const start=()=>{
-    if(!audio.paused)return;
-    const attempt=audio.play();
-    if(attempt&&typeof attempt.catch==='function') attempt.catch(()=>{});
+  const bgm=document.getElementById('tennoya-bgm');
+  if(!bgm)return;
+  bgm.volume=0.2;
+  const tryAutoplay=()=>{
+    if(!bgm.paused)return;
+    const result=bgm.play();
+    if(result && typeof result.catch==='function') result.catch(()=>{});
   };
-  start();
-  audio.addEventListener('canplay',start);
-  window.addEventListener('pageshow',start);
-  // 音声の自動再生が禁止されるブラウザでは、最初の操作を使って再生する。
-  for(const event of ['pointerdown','touchstart','click','keydown']){
-    document.addEventListener(event,start,{capture:true,passive:true});
-  }
+  tryAutoplay();
+  document.addEventListener('DOMContentLoaded',tryAutoplay,{once:true});
+  bgm.addEventListener('canplay',tryAutoplay,{once:true});
+  window.addEventListener('pageshow',tryAutoplay);
 })();
 </script>
 </body></html>
