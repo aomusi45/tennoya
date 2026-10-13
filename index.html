@@ -161,7 +161,7 @@ if(output&&firebaseConfig.apiKey&&firebaseConfig.projectId){
   });
 }
 </script>
-<!-- 天乃八 BGM：自動再生を試行し、操作時も再生（音量20%、ループ） -->
+<!-- 天乃八 BGM：許可された環境では自動再生、制限時は最初の操作で再生 -->
 <audio id="tennoya-bgm" src="bgm.mp3" preload="auto" autoplay loop playsinline></audio>
 <script>
 (() => {
@@ -169,20 +169,31 @@ if(output&&firebaseConfig.apiKey&&firebaseConfig.projectId){
   if (!bgm) return;
   bgm.volume = 0.2;
   bgm.loop = true;
-  const playBgm = () => {
+
+  // play() はユーザーの操作イベントの中から直接実行する。
+  // 非同期処理を挟むとスマホの再生許可が失われる場合がある。
+  function startBgm() {
     if (!bgm.paused) return;
     try {
-      const result = bgm.play();
-      if (result && typeof result.catch === 'function') {
-        result.catch(err => console.info('BGM playback blocked:', err.name));
+      const pending = bgm.play();
+      if (pending && typeof pending.catch === 'function') {
+        pending.catch(() => { /* ブラウザの自動再生制限では操作を待つ */ });
       }
-    } catch (err) { console.info('BGM playback unavailable:', err); }
-  };
-  playBgm();
-  bgm.addEventListener('canplay', playBgm, {once:true});
-  window.addEventListener('pageshow', playBgm);
-  for (const event of ['pointerdown', 'touchstart', 'click', 'keydown']) {
-    document.addEventListener(event, playBgm, {capture:true, passive:true});
+    } catch (_) { /* 音声が読み込めない場合もページは正常に表示 */ }
+  }
+
+  // ブラウザが自動再生を許可している環境ではページ表示直後から鳴らす。
+  startBgm();
+  window.addEventListener('pageshow', startBgm);
+  bgm.addEventListener('canplay', startBgm);
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) startBgm();
+  });
+
+  // 音付き自動再生が禁止されたスマホでも、最初のタップで再生する。
+  // ゲストのタップを邪魔しないよう、イベントの動作は変更しない。
+  for (const type of ['touchstart', 'pointerdown', 'click', 'keydown']) {
+    document.addEventListener(type, startBgm, {capture:true, passive:true});
   }
 })();
 </script>
