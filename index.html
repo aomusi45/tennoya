@@ -142,9 +142,27 @@ if(output&&firebaseConfig.apiKey&&firebaseConfig.projectId){
   const app=getApps().length?getApp():initializeApp(firebaseConfig);
   const db=getFirestore(app),auth=getAuth(app),ref=doc(db,'siteStats','visits');
   const format=n=>{if(Number.isFinite(Number(n)))output.textContent=Number(n).toLocaleString('ja-JP');};
+  const resetButton=document.createElement('button');
+  resetButton.type='button';resetButton.textContent='訪問者数を0にリセット（管理者用）';
+  resetButton.style.cssText='display:none;margin-left:12px;padding:5px 9px;font-size:12px;cursor:pointer';
+  counterArea.append(resetButton);
   onAuthStateChanged(auth,async user=>{
     let admin=false;
     if(user){try{const a=await getDoc(doc(db,'admins',user.uid));admin=a.exists()&&a.data().role==='admin';}catch(e){console.warn('Admin check:',e);}}
+    resetButton.style.display=admin?'inline-block':'none';
+    resetButton.disabled=!admin;
+    resetButton.onclick=admin?async()=>{
+      if(!confirm('訪問者数を0にリセットしますか？ この操作は取り消せません。'))return;
+      resetButton.disabled=true;
+      try{
+        const a=await getDoc(doc(db,'admins',auth.currentUser.uid));
+        if(!a.exists()||a.data().role!=='admin')throw Error('管理者権限がありません');
+        await runTransaction(db,async tx=>{await tx.get(ref);tx.set(ref,{count:0});});
+        localStorage.setItem('tennoya-visit-last-count','0');
+        format(0);alert('訪問者数を0にしました。');
+      }catch(e){console.error(e);alert('リセットできませんでした。Firestoreの書き込み権限を確認してください。');}
+      finally{resetButton.disabled=false;}
+    }:null;
     try{
       const snap=await getDoc(ref);format(snap.exists()?snap.data().count:0);
     }catch(e){output.textContent='集計中';console.warn('Counter read:',e);}
@@ -161,45 +179,39 @@ if(output&&firebaseConfig.apiKey&&firebaseConfig.projectId){
   });
 }
 </script>
-<!-- 天乃八 BGM：低音量で自動再生を試行、ON/OFF切替 -->
-<button id="tennoya-bgm-toggle" type="button" aria-label="BGMをオフにする" aria-pressed="true" style="position:fixed;right:14px;bottom:18px;z-index:99999;background:#493528;color:#fff;border:1px solid #c8b5a1;border-radius:24px;padding:10px 16px;font-size:14px;cursor:pointer;box-shadow:0 2px 8px #0003">♪ BGM ON</button>
-<audio id="tennoya-bgm" src="./bgm.mp3" preload="auto" autoplay loop playsinline></audio>
+<!-- 天乃八 BGM: 音声の自動再生はブラウザの設定により制限される場合があります -->
+<div id="tennoya-bgm-control" style="position:fixed;right:12px;bottom:12px;z-index:9998;background:#fffdf8ee;border:1px solid #bda996;border-radius:24px;padding:7px 12px;box-shadow:0 2px 10px #0003;font-size:13px">
+  <button id="tennoya-bgm-toggle" type="button" aria-label="BGMを再生" style="border:0;background:transparent;color:#46372a;font:inherit;font-weight:bold;cursor:pointer">♪ BGMを再生</button>
+</div>
+<audio id="tennoya-bgm" src="bgm.mp3" preload="none" loop></audio>
 <script>
 (()=>{
   const audio=document.getElementById('tennoya-bgm');
   const button=document.getElementById('tennoya-bgm-toggle');
-  if(!audio||!button)return;
-  audio.volume=0.05;
-  audio.loop=true;
-  let enabled=sessionStorage.getItem('tennoya-bgm-enabled')!=='0';
-  function updateButton(){
-    button.textContent=enabled?'♪ BGM ON':'♪ BGM OFF';
-    button.setAttribute('aria-label',enabled?'BGMをオフにする':'BGMをオンにする');
-    button.setAttribute('aria-pressed',String(enabled));
+  audio.volume=0.35;
+  let userPaused=false;
+  function update(){
+    const playing=!audio.paused;
+    button.textContent=playing?'♪ BGMを停止':'♪ BGMを再生';
+    button.setAttribute('aria-label',playing?'BGMを停止':'BGMを再生');
   }
-  function start(){
-    if(!enabled||!audio.paused)return;
-    const result=audio.play();
-    if(result&&typeof result.catch==='function')result.catch(()=>{});
+  async function start(){
+    if(userPaused||!audio.paused)return;
+    try{await audio.play();}catch(e){/* ブラウザの自動再生制限時は再生ボタンを使う */}
+    update();
   }
-  button.addEventListener('click',()=>{
-    enabled=!enabled;
-    sessionStorage.setItem('tennoya-bgm-enabled',enabled?'1':'0');
-    updateButton();
-    if(enabled)start();else audio.pause();
+  button.addEventListener('click',async()=>{
+    if(audio.paused){userPaused=false;await start();}
+    else{userPaused=true;audio.pause();update();}
   });
-  updateButton();
-  if(!enabled)audio.pause();
-  else start();
-  // ブラウザが再生を許可するタイミングで再試行する
-  window.addEventListener('load',start);
-  window.addEventListener('pageshow',start);
-  window.addEventListener('focus',start);
-  document.addEventListener('visibilitychange',()=>{if(!document.hidden)start();});
-  audio.addEventListener('canplay',start);
-  for(const event of ['pointerdown','touchend','keydown']){
-    document.addEventListener(event,start,{passive:true});
-  }
+  audio.addEventListener('play',update);
+  audio.addEventListener('pause',update);
+  audio.addEventListener('error',()=>{button.textContent='♪ BGMを読み込めません';});
+  // 許可された環境ではページ表示時に再生。制限時は最初の操作で再試行。
+  start();
+  const firstInteraction=()=>{if(!userPaused)start();};
+  document.addEventListener('pointerdown',firstInteraction,{once:true});
+  document.addEventListener('keydown',firstInteraction,{once:true});
 })();
 </script>
 </body></html>
