@@ -53,4 +53,57 @@
  });
  header.querySelectorAll('nav a').forEach(function(link){link.addEventListener('click',function(){header.classList.remove('menu-open');button.setAttribute('aria-expanded','false');button.textContent='☰ メニュー';});});
 })();
-</script></body></html>
+</script>
+<style>
+/* トップページには最新2記事のみ表示 */
+#blog-posts > article:nth-of-type(n+3){display:none!important}
+#blog-posts .tn-post-photos{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:14px 0}
+#blog-posts .tn-post-photos img{width:100%;height:auto;aspect-ratio:1;object-fit:cover;border-radius:8px;cursor:pointer}
+@media(max-width:500px){#blog-posts .tn-post-photos{gap:5px}}
+</style>
+<script type="module">
+// 掲示板の写真は posts.images（配列）に保存されている。
+// 既存の投稿・返信・いいね処理には触れず、トップの2記事に写真を補完する。
+import {getDocs,collection,query,where} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
+const host=document.getElementById('blog-posts');
+if(host){
+  const waitForDb=()=>new Promise((resolve,reject)=>{
+    let n=0;
+    const timer=setInterval(()=>{
+      if(window.tennoyaDb?.db){clearInterval(timer);resolve(window.tennoyaDb.db);}
+      else if(++n>100){clearInterval(timer);reject(Error('Firebase initialization timed out'));}
+    },100);
+  });
+  try{
+    const db=await waitForDb();
+    const snap=await getDocs(query(collection(db,'posts'),where('status','==','approved')));
+    const recent=[...snap.docs].sort((a,b)=>(b.data().createdAt?.toMillis?.()||0)-(a.data().createdAt?.toMillis?.()||0)).slice(0,2);
+    function apply(){
+      const articles=[...host.querySelectorAll(':scope > article')];
+      recent.forEach((entry,i)=>{
+        const article=articles[i];
+        if(!article||article.querySelector('.tn-post-photos'))return;
+        const photos=entry.data().images;
+        if(!Array.isArray(photos)||!photos.length)return;
+        const grid=document.createElement('div');grid.className='tn-post-photos';
+        photos.slice(0,3).forEach(url=>{
+          if(typeof url!=='string'||!(url.startsWith('https://')||url.startsWith('data:image/')))return;
+          const img=document.createElement('img');img.src=url;img.alt='ブログに投稿された写真';img.loading='lazy';
+          img.addEventListener('click',()=>window.open(url,'_blank','noopener'));
+          grid.append(img);
+        });
+        if(grid.childElementCount){
+          const old=article.querySelector('img:not(.tn-post-photos img)');
+          if(old)old.remove();
+          const body=article.querySelector('p');
+          if(body)body.before(grid);else article.append(grid);
+        }
+      });
+    }
+    const observer=new MutationObserver(apply);
+    observer.observe(host,{childList:true});
+    apply();
+  }catch(e){console.warn('Blog photos:',e);}
+}
+</script>
+</body></html>
