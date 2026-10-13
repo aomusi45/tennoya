@@ -179,17 +179,25 @@ if(output&&firebaseConfig.apiKey&&firebaseConfig.projectId){
   });
 }
 </script>
-<!-- 天乃八 BGM：自動再生のみ（音量20%、ループ） -->
+<!-- 天乃八 BGM：自動再生を試行し、制限時は最初の操作で再生（音量20%、ループ） -->
 <audio id="tennoya-bgm" src="bgm.mp3" preload="auto" autoplay loop playsinline></audio>
 <script>
 (()=>{
   const audio=document.getElementById('tennoya-bgm');
   if(!audio)return;
   audio.volume=0.2;
-  const start=()=>{if(audio.paused)audio.play().catch(()=>{});};
+  const start=()=>{
+    if(!audio.paused)return;
+    const attempt=audio.play();
+    if(attempt&&typeof attempt.catch==='function') attempt.catch(()=>{});
+  };
   start();
-  audio.addEventListener('canplay',start,{once:true});
+  audio.addEventListener('canplay',start);
   window.addEventListener('pageshow',start);
+  // 音声の自動再生が禁止されるブラウザでは、最初の操作を使って再生する。
+  for(const event of ['pointerdown','touchstart','click','keydown']){
+    document.addEventListener(event,start,{capture:true,passive:true});
+  }
 })();
 </script>
 </body></html>
