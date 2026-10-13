@@ -15,13 +15,34 @@ if(!firebaseConfig.apiKey || !firebaseConfig.projectId){
     window.tennoyaDb={db,auth,doc,getDoc,setDoc,collection,query,orderBy,getDocs,signInWithEmailAndPassword,signOut,onAuthStateChanged};
     if(count){
       const ref=doc(db,'siteStats','visits');
-      try{
-        if(!sessionStorage.getItem('tennoya-visit-counted')){
-          await runTransaction(db,async tx=>{const snap=await tx.get(ref);const current=snap.exists()?Number(snap.data().count||0):0;tx.set(ref,{count:current+1});});
-          sessionStorage.setItem('tennoya-visit-counted','1');
+      // Display the last known count immediately when available.
+      const cached=localStorage.getItem('tennoya-visit-last-count');
+      if(cached!==null && /^\d+$/.test(cached))count.textContent=Number(cached).toLocaleString('ja-JP');
+      else count.textContent='集計中';
+      const showCount=value=>{
+        const n=Number(value);
+        if(Number.isFinite(n)&&n>=0){
+          count.textContent=n.toLocaleString('ja-JP');
+          localStorage.setItem('tennoya-visit-last-count',String(n));
         }
-        const snap=await getDoc(ref);count.textContent=Number(snap.data()?.count||0).toLocaleString('ja-JP');
-      }catch(e){count.textContent='集計中';console.warn('Counter:',e);}
+      };
+      try{
+        // Read first: don't block rendering on the write transaction.
+        const snap=await getDoc(ref);
+        showCount(snap.exists()?snap.data().count:0);
+      }catch(e){console.warn('Counter read:',e);if(cached===null)count.textContent='集計中';}
+      if(!sessionStorage.getItem('tennoya-visit-counted')){
+        try{
+          const newCount=await runTransaction(db,async tx=>{
+            const snap=await tx.get(ref);
+            const current=snap.exists()?Number(snap.data().count||0):0;
+            tx.set(ref,{count:current+1});
+            return current+1;
+          });
+          sessionStorage.setItem('tennoya-visit-counted','1');
+          showCount(newCount);
+        }catch(e){console.warn('Counter update:',e);}
+      }
     }
     if(posts){
       const style=document.createElement('style');
