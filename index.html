@@ -171,7 +171,7 @@ if(output&&firebaseConfig.apiKey&&firebaseConfig.projectId){
   const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
   const isIOS = /iPad|iPhone|iPod/i.test(navigator.userAgent) ||
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-  bgm.volume = isMobile ? 0.03 : 0.08;
+  bgm.volume = isMobile ? 0.015 : 0.08;
   bgm.loop = true;
 
   // iPhone/iPad は audio.volume を無視することがあるため、Web Audio で音量調整。
@@ -183,7 +183,7 @@ if(output&&firebaseConfig.apiKey&&firebaseConfig.projectId){
         audioContext = new AudioContextClass();
         const source = audioContext.createMediaElementSource(bgm);
         const gain = audioContext.createGain();
-        gain.gain.value = 0.03;
+        gain.gain.value = 0.015;
         source.connect(gain);
         gain.connect(audioContext.destination);
       }
