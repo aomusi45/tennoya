@@ -10,36 +10,44 @@
 </head>
 <body><main>
 <h1>天乃八 掲示板</h1><p class="muted" style="text-align:center">投稿は管理者が確認・承認した後に公開されます。</p>
-<section class="panel"><h2>メッセージを投稿</h2><form id="postForm"><label for="name">お名前（30文字以内）</label><input id="name" maxlength="30" required autocomplete="name"><label for="message">メッセージ（1000文字以内）</label><textarea id="message" maxlength="1000" required></textarea><label for="photos">写真（最大3枚・JPEG/PNG/WebP）</label><input id="photos" type="file" accept="image/jpeg,image/png,image/webp" multiple><div id="photoPreview" class="photo-preview"></div><p class="photo-note">写真は自動縮小してアップロードします。投稿は管理者の承認後に公開されます。</p><button id="submitPost" type="submit">承認待ちとして投稿</button><p id="postStatus" class="status" role="status"></p></form></section>
+<section class="panel"><h2>メッセージを投稿</h2><form id="postForm"><label for="name">お名前（30文字以内）</label><input id="name" maxlength="30" required autocomplete="name"><label for="message">メッセージ（1000文字以内）</label><textarea id="message" maxlength="1000" required></textarea><label for="photos">写真（最大3枚・JPEG/PNG/WebP）</label><input id="photos" type="file" accept="image/jpeg,image/png,image/webp" multiple><div id="photoPreview" class="photo-preview"></div><p class="photo-note">写真は小さく圧縮して保存します（画質は下がります）。投稿は管理者の承認後に公開されます。</p><button id="submitPost" type="submit">承認待ちとして投稿</button><p id="postStatus" class="status" role="status"></p></form></section>
 <section class="panel"><h2>みんなの投稿</h2><div id="publicPosts"><p class="muted">読み込み中…</p></div></section>
 <section class="panel"><details id="adminDetails"><summary>管理者用</summary><div id="adminLogin"><label for="email">メールアドレス</label><input id="email" type="email" autocomplete="username"><label for="password">パスワード</label><input id="password" type="password" autocomplete="current-password"><button id="loginBtn" type="button">ログイン</button></div><div id="adminPanel" class="hidden"><p>管理者としてログイン中</p><button id="logoutBtn" class="secondary" type="button">ログアウト</button><h2>承認待ちの投稿</h2><div id="pendingPosts"><p class="muted">読み込み中…</p></div><h2>承認待ちの返信</h2><div id="pendingReplies"></div></div><p id="adminStatus" class="status" role="status"></p></details></section>
 </main>
 <script type="module">
 import {initializeApp} from 'https://www.gstatic.com/firebasejs/13.0.0/firebase-app.js';
 import {getFirestore,collection,query,where,getDocs,addDoc,updateDoc,deleteDoc,doc,getDoc,serverTimestamp} from 'https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js';
-import {getStorage,ref as storageRef,uploadBytes,getDownloadURL} from 'https://www.gstatic.com/firebasejs/13.0.0/firebase-storage.js';
 import {getAuth,signInWithEmailAndPassword,signOut,onAuthStateChanged} from 'https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js';
 const firebaseConfig={apiKey:'AIzaSyAcdemVICkSXfhZ515fb_CM5pKXbDJiwl4',authDomain:'tennoya-bbs.firebaseapp.com',projectId:'tennoya-bbs',storageBucket:'tennoya-bbs.firebasestorage.app',messagingSenderId:'191259027925',appId:'1:191259027925:web:e5b88686b6634995fcb55c'};
-const app=initializeApp(firebaseConfig),db=getFirestore(app),auth=getAuth(app),storage=getStorage(app);
+const app=initializeApp(firebaseConfig),db=getFirestore(app),auth=getAuth(app);
 const el=id=>document.getElementById(id);let isAdmin=false;
 const fmt=ts=>ts?.toDate?.()?.toLocaleString('ja-JP')||'日時未確定';
 let approvedReplies=[],pendingReplies=[];
 const make=(tag,cls,txt)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(txt!==undefined)n.textContent=txt;return n;};
-// 写真は最大3枚、各画像を長辺1600px以下のJPEGに縮小して保存します。
-const MAX_PHOTOS=3;
+// 写真はFirestoreの投稿データ内に保存。1枚約100KB以下に縮小する。
+// Firestoreは1文書1MiBまで。無料枠にも容量・読み書き回数の上限があります。
+const MAX_PHOTOS=3, MAX_IMAGE_CHARS=150000;
 async function compressPhoto(file){
   if(!['image/jpeg','image/png','image/webp'].includes(file.type))throw Error('JPEG・PNG・WebPの写真を選んでください。');
   if(file.size>15*1024*1024)throw Error('元の写真は1枚15MB以下にしてください。');
-  const bitmap=await createImageBitmap(file);try{
-    const scale=Math.min(1,1600/Math.max(bitmap.width,bitmap.height));
-    const canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(bitmap.width*scale));canvas.height=Math.max(1,Math.round(bitmap.height*scale));
-    canvas.getContext('2d').drawImage(bitmap,0,0,canvas.width,canvas.height);
-    const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',0.78));
-    if(!blob)throw Error('画像を変換できませんでした。');return blob;
+  const bitmap=await createImageBitmap(file);
+  try{
+    for(const edge of [900,720,560,440,340]){
+      const scale=Math.min(1,edge/Math.max(bitmap.width,bitmap.height));
+      const canvas=document.createElement('canvas');
+      canvas.width=Math.max(1,Math.round(bitmap.width*scale));
+      canvas.height=Math.max(1,Math.round(bitmap.height*scale));
+      canvas.getContext('2d').drawImage(bitmap,0,0,canvas.width,canvas.height);
+      for(const quality of [0.68,0.5,0.35]){
+        const url=canvas.toDataURL('image/jpeg',quality);
+        if(url.length<=MAX_IMAGE_CHARS)return url;
+      }
+    }
+    throw Error('この写真は圧縮できませんでした。別の写真を選んでください。');
   }finally{bitmap.close();}
 }
 function renderPhotos(item,images){if(!Array.isArray(images)||!images.length)return;const grid=make('div','photo-grid');for(const url of images.slice(0,MAX_PHOTOS)){
-  if(typeof url!=='string'||!url.startsWith('https://'))continue;
+  if(typeof url!=='string'||!(url.startsWith('https://')||url.startsWith('data:image/jpeg;base64,')))continue;
   const img=make('img');img.src=url;img.loading='lazy';img.alt='投稿された写真';img.onclick=()=>{const modal=make('div','photo-modal');const big=make('img');big.src=url;big.alt='拡大した写真';const close=make('button','','閉じる');close.onclick=()=>modal.remove();modal.onclick=e=>{if(e.target===modal)modal.remove();};modal.append(big,close);document.body.append(modal);};grid.append(img);
 }item.append(grid);}
 const photoInput=el('photos');photoInput.addEventListener('change',()=>{const preview=el('photoPreview');preview.replaceChildren();const files=[...photoInput.files];if(files.length>MAX_PHOTOS){el('postStatus').textContent='写真は最大3枚までです。';photoInput.value='';return;}el('postStatus').textContent='';for(const file of files){if(!file.type.startsWith('image/'))continue;const url=URL.createObjectURL(file);const img=make('img');img.src=url;img.onload=()=>URL.revokeObjectURL(url);preview.append(img);}});
@@ -52,10 +60,9 @@ async function loadPublic(){try{const [posts,replies]=await Promise.all([getDocs
 async function loadPending(){if(!isAdmin)return;try{const [posts,replies]=await Promise.all([getDocs(query(collection(db,'posts'),where('status','==','pending'))),getDocs(query(collection(db,'replies'),where('status','==','pending')))]);pendingReplies=replies.docs;showPosts(el('pendingPosts'),posts.docs,true);showPendingReplies();}catch(e){el('pendingPosts').textContent='承認待ちの取得に失敗しました：'+e.message;}}
 async function refresh(){await Promise.all([loadPublic(),loadPending()]);}
 el('postForm').addEventListener('submit',async ev=>{ev.preventDefault();const name=el('name').value.trim(),message=el('message').value.trim();if(!name||!message||name.length>30||message.length>1000){el('postStatus').textContent='名前とメッセージを入力してください。';return;}el('submitPost').disabled=true;el('postStatus').textContent='送信中…';try{const files=[...photoInput.files];if(files.length>MAX_PHOTOS)throw Error('写真は最大3枚までです。');const images=[];for(let i=0;i<files.length;i++){
-  el('postStatus').textContent=`写真をアップロード中（${i+1}/${files.length}）…`;
-  const blob=await compressPhoto(files[i]);const id=crypto.randomUUID();const path=`bbs-photos/${id}.jpg`;
-  const ref=storageRef(storage,path);await uploadBytes(ref,blob,{contentType:'image/jpeg'});images.push(await getDownloadURL(ref));
-}await addDoc(collection(db,'posts'),{name,message,images,createdAt:serverTimestamp(),status:'pending'});el('message').value='';photoInput.value='';el('photoPreview').replaceChildren();el('postStatus').textContent='投稿を受け付けました。管理者の承認後に公開されます。';if(isAdmin)await loadPending();}catch(e){el('postStatus').textContent='投稿できませんでした：'+(e.message||e.code||'通信状況を確認してください。')+' Firebase StorageとFirestoreのルールも確認してください。';console.error(e);}finally{el('submitPost').disabled=false;}});
+  el('postStatus').textContent=`写真を圧縮中（${i+1}/${files.length}）…`;
+  images.push(await compressPhoto(files[i]));
+}await addDoc(collection(db,'posts'),{name,message,images,createdAt:serverTimestamp(),status:'pending'});el('message').value='';photoInput.value='';el('photoPreview').replaceChildren();el('postStatus').textContent='投稿を受け付けました。管理者の承認後に公開されます。';if(isAdmin)await loadPending();}catch(e){el('postStatus').textContent='投稿できませんでした：'+(e.message||e.code||'通信状況を確認してください。')+' Firestoreのルールも確認してください。';console.error(e);}finally{el('submitPost').disabled=false;}});
 el('loginBtn').onclick=async()=>{el('adminStatus').textContent='ログイン中…';el('loginBtn').disabled=true;try{await signInWithEmailAndPassword(auth,el('email').value.trim(),el('password').value);el('password').value='';}catch(e){el('adminStatus').textContent='ログインできませんでした。メールアドレスとパスワードを確認してください。';console.error(e);}finally{el('loginBtn').disabled=false;}};
 el('logoutBtn').onclick=()=>signOut(auth);
 onAuthStateChanged(auth,async user=>{isAdmin=false;el('adminPanel').classList.add('hidden');el('adminLogin').classList.remove('hidden');if(!user){el('adminStatus').textContent='';return;}try{const adminSnap=await getDoc(doc(db,'admins',user.uid));if(!adminSnap.exists()||adminSnap.data().role!=='admin'){el('adminStatus').textContent='このアカウントには管理者権限がありません。';await signOut(auth);return;}isAdmin=true;el('adminLogin').classList.add('hidden');el('adminPanel').classList.remove('hidden');el('adminStatus').textContent='';await Promise.all([loadPending(),loadPublic()]);}catch(e){el('adminStatus').textContent='管理者権限を確認できませんでした。';console.error(e);}});
