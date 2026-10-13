@@ -161,31 +161,44 @@ if(output&&firebaseConfig.apiKey&&firebaseConfig.projectId){
   });
 }
 </script>
-<!-- 天乃八 BGM：小音量・ループ。音声の自動再生が制限された場合は操作時に再試行 -->
+<!-- 天乃八 BGM：自動再生を試み、ON/OFFで切り替え（音量5%） -->
+<button id="tennoya-bgm-toggle" type="button" aria-label="BGMをオフにする" aria-pressed="true" style="position:fixed;right:14px;bottom:18px;z-index:99999;background:#493528;color:#fff;border:1px solid #c8b5a1;border-radius:24px;padding:10px 16px;font-size:14px;cursor:pointer;box-shadow:0 2px 8px #0003">♪ BGM ON</button>
 <audio id="tennoya-bgm" src="./bgm.mp3" preload="auto" autoplay loop playsinline></audio>
 <script>
 (()=>{
   const audio=document.getElementById('tennoya-bgm');
-  if(!audio)return;
-  audio.volume=0.15;
+  const button=document.getElementById('tennoya-bgm-toggle');
+  if(!audio||!button)return;
+  audio.volume=0.05;
   audio.loop=true;
+  let enabled=sessionStorage.getItem('tennoya-bgm-enabled')!=='0';
   let busy=false;
+  function updateButton(){
+    button.textContent=enabled?'♪ BGM ON':'♪ BGM OFF';
+    button.setAttribute('aria-label',enabled?'BGMをオフにする':'BGMをオンにする');
+    button.setAttribute('aria-pressed',String(enabled));
+  }
   async function start(){
-    if(!audio.paused||busy)return;
+    if(!enabled||!audio.paused||busy)return;
     busy=true;
     try{await audio.play();}
-    catch(e){console.info('BGMはブラウザの再生制限、またはファイル未読込により再生待ちです:',e.name);}
+    catch(e){console.info('BGMはブラウザの自動再生制限などにより再生待ちです:',e.name);}
     finally{busy=false;}
   }
-  // 自動再生を試み、許可されない場合はユーザー操作で再試行する。
-  // onceにするとファイル読み込み前のタップで機会を失うため、再生成功まで監視する。
-  start();
+  button.addEventListener('click',()=>{
+    enabled=!enabled;
+    sessionStorage.setItem('tennoya-bgm-enabled',enabled?'1':'0');
+    updateButton();
+    if(enabled)start();else audio.pause();
+  });
+  updateButton();
+  if(!enabled)audio.pause();else start();
   for(const event of ['pointerdown','touchend','keydown']){
     document.addEventListener(event,start,{passive:true});
   }
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)start();});
   audio.addEventListener('canplay',start);
-  audio.addEventListener('error',()=>console.warn('BGMファイル bgm.mp3 を読み込めません。GitHubのindex.htmlと同じ階層に置いてください。'));
+  audio.addEventListener('error',()=>console.warn('BGMファイル bgm.mp3 を読み込めません。'));
 })();
 </script>
 </body></html>
