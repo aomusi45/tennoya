@@ -167,12 +167,38 @@ if(output&&firebaseConfig.apiKey&&firebaseConfig.projectId){
 (() => {
   const bgm = document.getElementById('tennoya-bgm');
   if (!bgm) return;
-  bgm.volume = 0.08;
+  // PC は従来どおり 8%。スマホはさらに小さくする。
+  const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  const isIOS = /iPad|iPhone|iPod/i.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  bgm.volume = isMobile ? 0.03 : 0.08;
   bgm.loop = true;
+
+  // iPhone/iPad は audio.volume を無視することがあるため、Web Audio で音量調整。
+  let audioContext = null;
+  if (isIOS) {
+    try {
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (AudioContextClass) {
+        audioContext = new AudioContextClass();
+        const source = audioContext.createMediaElementSource(bgm);
+        const gain = audioContext.createGain();
+        gain.gain.value = 0.03;
+        source.connect(gain);
+        gain.connect(audioContext.destination);
+      }
+    } catch (e) {
+      console.warn('BGM volume control:', e);
+      audioContext = null;
+    }
+  }
 
   // play() はユーザーの操作イベントの中から直接実行する。
   // 非同期処理を挟むとスマホの再生許可が失われる場合がある。
   function startBgm() {
+    if (audioContext && audioContext.state === 'suspended') {
+      audioContext.resume().catch(() => {});
+    }
     if (!bgm.paused) return;
     try {
       const pending = bgm.play();
