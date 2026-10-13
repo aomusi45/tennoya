@@ -161,20 +161,31 @@ if(output&&firebaseConfig.apiKey&&firebaseConfig.projectId){
   });
 }
 </script>
-<!-- 天乃八 BGM：ボタンなし・小音量。ブラウザの制限時は最初の操作後に再生 -->
-<audio id="tennoya-bgm" src="bgm.mp3" preload="auto" autoplay loop></audio>
+<!-- 天乃八 BGM：小音量・ループ。音声の自動再生が制限された場合は操作時に再試行 -->
+<audio id="tennoya-bgm" src="./bgm.mp3" preload="auto" autoplay loop playsinline></audio>
 <script>
 (()=>{
   const audio=document.getElementById('tennoya-bgm');
   if(!audio)return;
-  audio.volume=0.2;
+  audio.volume=0.15;
+  audio.loop=true;
+  let busy=false;
   async function start(){
-    if(!audio.paused)return;
-    try{await audio.play();}catch(e){/* 音声の自動再生はブラウザ側で制限される場合があります */}
+    if(!audio.paused||busy)return;
+    busy=true;
+    try{await audio.play();}
+    catch(e){console.info('BGMはブラウザの再生制限、またはファイル未読込により再生待ちです:',e.name);}
+    finally{busy=false;}
   }
+  // 自動再生を試み、許可されない場合はユーザー操作で再試行する。
+  // onceにするとファイル読み込み前のタップで機会を失うため、再生成功まで監視する。
   start();
-  document.addEventListener('pointerdown',start,{once:true});
-  document.addEventListener('keydown',start,{once:true});
+  for(const event of ['pointerdown','touchend','keydown']){
+    document.addEventListener(event,start,{passive:true});
+  }
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)start();});
+  audio.addEventListener('canplay',start);
+  audio.addEventListener('error',()=>console.warn('BGMファイル bgm.mp3 を読み込めません。GitHubのindex.htmlと同じ階層に置いてください。'));
 })();
 </script>
 </body></html>
